@@ -475,6 +475,18 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok || !result.success) {
+        if (response.status === 405) {
+          const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+          if (isLocal) {
+            throw new Error(
+              "현재 로컬 정적 서버(VS Code Live Server 등)에서 실행 중입니다. Live Server는 서버리스 함수(POST API)를 지원하지 않아 405 오류가 발생합니다. Vercel에 배포된 사이트 주소에서 테스트하시거나, 로컬에서는 Vercel CLI('npx vercel dev')를 사용해 주세요."
+            );
+          } else {
+            throw new Error(
+              "서버리스 엔드포인트에서 405 Method Not Allowed 오류가 발생했습니다. Vercel 배포가 완료되었는지 확인해 주세요."
+            );
+          }
+        }
         throw new Error(result.error || `분석 실패 (HTTP ${response.status})`);
       }
 
