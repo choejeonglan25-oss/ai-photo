@@ -1,6 +1,51 @@
 // Vercel Serverless Function: Google Gemini API 연동 사진 분위기 분석기
 // API 키는 서버 환경 변수(GEMINI_API_KEY)로 안전하게 보호됩니다.
 
+// 사용 가능한 Gemini 비전 모델 자동 탐색 함수
+async function resolveGeminiModel(apiKey) {
+  try {
+    const listRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    );
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const models = listData.models || [];
+
+      // generateContent를 지원하는 모델 필터링
+      const contentModels = models.filter(
+        (m) =>
+          Array.isArray(m.supportedGenerationMethods) &&
+          m.supportedGenerationMethods.includes("generateContent")
+      );
+
+      // 1순위: 최신 flash 모델 (gemini-2.0-flash, gemini-1.5-flash-latest, gemini-2.5-flash 등)
+      const flashModel = contentModels.find((m) =>
+        m.name.toLowerCase().includes("flash")
+      );
+      if (flashModel) {
+        return flashModel.name;
+      }
+
+      // 2순위: gemini pro 등 기타 gemini 모델
+      const anyGemini = contentModels.find((m) =>
+        m.name.toLowerCase().includes("gemini")
+      );
+      if (anyGemini) {
+        return anyGemini.name;
+      }
+
+      if (contentModels.length > 0) {
+        return contentModels[0].name;
+      }
+    }
+  } catch (err) {
+    console.warn("모델 목록 자동 조회 실패, 기본 후보 목록으로 진행:", err.message);
+  }
+
+  // 기본 fallback
+  return "models/gemini-2.0-flash";
+}
+
 module.exports = async function handler(req, res) {
   // CORS 헤더 설정
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -27,7 +72,8 @@ module.exports = async function handler(req, res) {
   if (!apiKey) {
     return res.status(500).json({
       success: false,
-      error: "GEMINI_API_KEY 환경 변수가 설정되지 않았습니다. Vercel 프로젝트 환경 변수(Environment Variables)에 GEMINI_API_KEY를 등록해 주세요."
+      error:
+        "GEMINI_API_KEY 환경 변수가 설정되지 않았습니다. Vercel 프로젝트 환경 변수(Environment Variables)에 GEMINI_API_KEY를 등록해 주세요."
     });
   }
 
@@ -99,9 +145,6 @@ module.exports = async function handler(req, res) {
 - hashtags는 사진과 어울리는 해시태그 정확히 4개여야 하며 '#' 기호로 시작해야 합니다.
 - colors는 사진의 분위기를 대표하는 주요 색상 5개의 HEX 코드입니다.`;
 
-    // 3. Gemini REST API 호출 (gemini-1.5-flash 모델 사용)
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
     const geminiRequestBody = {
       contents: [
         {
@@ -123,22 +166,56 @@ module.exports = async function handler(req, res) {
       }
     };
 
-    const geminiResponse = await fetch(geminiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(geminiRequestBody)
-    });
+    // 3. 사용 가능한 모델 자동 탐색 및 Fallback 리스트 준비
+    const discoveredModel = await resolveGeminiModel(apiKey);
+    const candidateModels = Array.from(
+      new Set([
+        discoveredModel,
+        "models/gemini-2.0-flash",
+        "models/gemini-1.5-flash-latest",
+        "models/gemini-2.5-flash",
+        "models/gemini-1.5-pro",
+        "models/gemini-pro-vision"
+      ])
+    );
 
-    if (!geminiResponse.ok) {
-      const errorJson = await geminiResponse.json().catch(() => ({}));
-      const errorMsg =
-        errorJson.error?.message || `Gemini API 오류 (HTTP ${geminiResponse.status})`;
-      throw new Error(errorMsg);
+    let lastError = null;
+    let geminiData = null;
+
+    // 지원되는 모델을 순차적으로 호출하여 성공할 때까지 시도
+    for (const modelPath of candidateModels) {
+      const cleanModelPath = modelPath.startsWith("models/")
+        ? modelPath
+        : `models/${modelPath}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/${cleanModelPath}:generateContent?key=${apiKey}`;
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(geminiRequestBody)
+        });
+
+        if (response.ok) {
+          geminiData = await response.json();
+          break; // 성공 시 루프 탈출
+        } else {
+          const errJson = await response.json().catch(() => ({}));
+          lastError = new Error(
+            errJson.error?.message || `HTTP ${response.status} (${cleanModelPath})`
+          );
+        }
+      } catch (err) {
+        lastError = err;
+      }
     }
 
-    const geminiData = await geminiResponse.json();
+    if (!geminiData) {
+      throw lastError || new Error("모든 Gemini 모델 호출에 실패했습니다.");
+    }
+
     const rawContent =
       geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
@@ -167,4 +244,3 @@ module.exports = async function handler(req, res) {
     });
   }
 };
-
