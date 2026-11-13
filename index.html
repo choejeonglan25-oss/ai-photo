@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MoodLens AI - 사진 분위기 분석기</title>
+  
+  <!-- Pretendard 웹폰트 -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- 스타일시트 -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="background-decorations" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <main class="container">
+    <!-- 서비스 헤더 -->
+    <header class="service-header">
+      <div class="badge">
+        <span class="badge-icon">🎨</span>
+        <span>AI Mood Scanner</span>
+      </div>
+      <h1 class="service-title">
+        내 사진의 <span class="highlight">숨은 분위기</span>를<br />AI가 찾아드려요!
+      </h1>
+      <p class="service-desc">
+        인생샷, 감성 카페, 여행 사진을 올려보세요.<br class="mobile-only" />
+        어떤 감성이 담겨있는지 알려드릴게요 ✨
+      </p>
+    </header>
+
+    <!-- 메인 카드 섹션 -->
+    <section class="card" id="uploadCard">
+      <!-- 파일 업로드 전 드롭존 -->
+      <div class="upload-area" id="dropArea">
+        <input 
+          type="file" 
+          id="fileInput" 
+          accept="image/png, image/jpeg, image/jpg, image/webp, image/heic" 
+          aria-label="사진 업로드" 
+        />
+        
+        <div class="upload-content" id="uploadPrompt">
+          <div class="icon-circle">
+            <i data-lucide="sparkles" class="icon-sparkle"></i>
+            <i data-lucide="image-plus" class="icon-main"></i>
+          </div>
+          <h2 class="upload-title">사진을 여기에 끌어다 놓으세요</h2>
+          <p class="upload-subtitle">
+            또는 <span class="browse-link">파일 찾기 / 카메라 촬영</span>
+          </p>
+          <div class="upload-tags">
+            <span class="tag">JPG</span>
+            <span class="tag">PNG</span>
+            <span class="tag">WEBP</span>
+            <span class="tag">최대 20MB</span>
+          </div>
+        </div>
+
+        <!-- 이미지 선택 후 미리보기 영역 -->
+        <div class="preview-content hidden" id="previewContainer">
+          <div class="image-wrapper">
+            <img id="previewImage" src="" alt="업로드한 사진 미리보기" />
+            <button type="button" class="btn-remove" id="btnRemove" title="사진 지우기" aria-label="사진 삭제">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+          
+          <div class="file-info-bar">
+            <div class="file-meta">
+              <i data-lucide="image" class="file-icon"></i>
+              <div class="file-details">
+                <span class="file-name" id="fileName">photo.jpg</span>
+                <span class="file-size" id="fileSize">0 MB</span>
+              </div>
+            </div>
+            <button type="button" class="btn-reselect" id="btnReselect">
+              <i data-lucide="refresh-cw"></i>
+              <span>다른 사진 선택</span>
+            </button>
+          </div>
+
+          <!-- Cloudinary 업로드 상태 및 URL 표시 영역 -->
+          <div class="cloudinary-status hidden" id="cloudinaryStatus">
+            <div class="status-indicator">
+              <span class="spinner-small" id="uploadSpinner"></span>
+              <i data-lucide="check-circle-2" class="icon-success hidden" id="uploadSuccessIcon"></i>
+              <i data-lucide="alert-circle" class="icon-error hidden" id="uploadErrorIcon"></i>
+              <span class="status-text" id="uploadStatusText">이미지를 업로드하고 있습니다.</span>
+            </div>
+            <div class="cloudinary-url-box hidden" id="cloudinaryUrlBox">
+              <span class="url-badge">Cloudinary</span>
+              <input type="text" class="url-input" id="cloudinaryUrlInput" readonly aria-label="업로드된 이미지 URL" />
+              <button type="button" class="btn-copy-url" id="btnCopyUrl" title="URL 복사">
+                <i data-lucide="copy"></i>
+                <span id="copyBtnText">복사</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 에러 알림 메시지 영역 -->
+      <div class="error-msg hidden" id="errorMsg">
+        <i data-lucide="alert-circle"></i>
+        <span id="errorText">이미지 파일만 선택할 수 있습니다.</span>
+      </div>
+
+      <!-- 분석 진행 중 안내 배너 -->
+      <div class="analyzing-banner hidden" id="analyzingBanner">
+        <div class="analyzing-spinner-wrap">
+          <div class="pulse-ring"></div>
+          <span class="spinner-large"></span>
+        </div>
+        <div class="analyzing-text-wrap">
+          <h3 class="analyzing-title">AI가 사진을 분석하고 있습니다.</h3>
+          <p class="analyzing-subtitle">색상, 배경, 의상, 표정, 구도와 분위기를 꼼꼼히 살피고 있어요 ✨</p>
+        </div>
+      </div>
+
+      <!-- 액션 버튼 -->
+      <div class="action-section">
+        <button type="button" class="btn-analyze" id="btnAnalyze" disabled>
+          <span class="btn-shine"></span>
+          <i data-lucide="wand-2" class="btn-icon" id="analyzeBtnIcon"></i>
+          <span class="spinner hidden" id="analyzeBtnSpinner"></span>
+          <span class="btn-text" id="analyzeBtnText">AI로 분위기 분석하기</span>
+        </button>
+        <p class="action-tip" id="actionTip">
+          👉 먼저 분석하고 싶은 사진을 선택해 주세요!
+        </p>
+      </div>
+    </section>
+
+    <!-- 다음 분석 단계 섹션 -->
+    <section class="card analysis-card hidden" id="analysisCard">
+      <div class="analysis-header">
+        <div class="badge badge-success">
+          <i data-lucide="sparkles"></i>
+          <span>AI Mood Analysis</span>
+        </div>
+        <h2 class="analysis-title">사진 분위기 분석 결과</h2>
+        <p class="analysis-desc">Google Gemini AI가 분석한 사진의 스타일과 분위기 리포트입니다 ✨</p>
+      </div>
+
+      <div class="analysis-image-wrapper">
+        <img id="analysisImage" src="" alt="분석된 이미지" />
+        <div class="image-source-badge">
+          <i data-lucide="sparkles"></i>
+          <span>Gemini AI 분석 완료</span>
+        </div>
+      </div>
+
+      <!-- 반환된 이미지 URL 정보 카드 -->
+      <div class="url-card">
+        <div class="url-card-header">
+          <span class="url-card-title">
+            <i data-lucide="cloud"></i>
+            <span>Cloudinary 이미지 URL</span>
+          </span>
+          <a id="btnOpenUrl" href="#" target="_blank" rel="noopener noreferrer" class="link-open-url">
+            <span>원본 보기</span>
+            <i data-lucide="external-link"></i>
+          </a>
+        </div>
+        <div class="url-card-body">
+          <input type="text" class="url-code-input" id="analysisUrlText" readonly aria-label="Cloudinary 이미지 URL" />
+          <button type="button" class="btn-copy-url" id="btnCopyAnalysisUrl" title="URL 복사">
+            <i data-lucide="copy"></i>
+            <span id="copyAnalysisBtnText">복사</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- AI 분석 결과 리포트 -->
+      <div class="report-box">
+        <div class="report-header-row">
+          <h3 class="report-heading">
+            <i data-lucide="sparkles"></i>
+            <span>AI 사진 분위기 리포트</span>
+          </h3>
+          <span class="report-model-tag">Gemini 1.5</span>
+        </div>
+
+        <!-- 1. AI 한줄평 -->
+        <div class="ai-review-card">
+          <div class="review-badge">
+            <i data-lucide="quote"></i>
+            <span>AI 한줄평</span>
+          </div>
+          <p class="review-text" id="aiOneLineReview">
+            "사진을 분석하고 있습니다..."
+          </p>
+        </div>
+
+        <!-- 2. 분위기 키워드 3개 & 퍼센트 -->
+        <div class="mood-keywords-box">
+          <div class="box-title">
+            <i data-lucide="sparkle"></i>
+            <span>분위기 키워드 TOP 3</span>
+          </div>
+          <div class="keywords-list" id="keywordsList">
+            <!-- 자바스크립트로 동적 렌더링 -->
+          </div>
+        </div>
+
+        <!-- 3. 추천 해시태그 4개 -->
+        <div class="hashtags-box">
+          <div class="box-title">
+            <i data-lucide="hash"></i>
+            <span>어울리는 해시태그 (4개)</span>
+          </div>
+          <div class="tags-container" id="hashtagsList">
+            <!-- 자바스크립트로 동적 렌더링 -->
+          </div>
+        </div>
+
+        <!-- 4. 추출된 분위기 컬러 -->
+        <div class="color-palette" id="colorPaletteBox">
+          <div class="palette-title">추출된 분위기 컬러</div>
+          <div class="palette-bars" id="colorPaletteBars">
+            <!-- 자바스크립트로 동적 렌더링 -->
+          </div>
+        </div>
+      </div>
+
+      <div class="analysis-actions">
+        <button type="button" class="btn-reset-all" id="btnResetAll">
+          <i data-lucide="arrow-left"></i>
+          <span>다른 사진으로 다시 분석하기</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 하단 부가 소개 (재미 요소) -->
+    <footer class="service-footer">
+      <div class="feature-pills">
+        <div class="pill">📸 인물 & 스냅</div>
+        <div class="pill">☕ 감성 카페</div>
+        <div class="pill">🌅 풍경 & 야경</div>
+        <div class="pill">🐱 반려동물</div>
+      </div>
+      <p class="footer-note">
+        선택한 사진은 Cloudinary 클라우드를 통해 안전하게 전송 및 처리됩니다 ☁️
+      </p>
+    </footer>
+  </main>
+
+  <!-- 토스트 팝업 (알림) -->
+  <div class="toast hidden" id="toast">
+    <div class="toast-icon" id="toastIcon">🎉</div>
+    <div class="toast-content">
+      <div class="toast-title" id="toastTitle">안내</div>
+      <div class="toast-message" id="toastMessage">메시지 내용</div>
+    </div>
+  </div>
+
+  <!-- 스크립트 -->
+  <script src="script.js"></script>
+</body>
+</html>
+
